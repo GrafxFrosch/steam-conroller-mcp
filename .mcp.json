@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "steam-controller": {
+      "command": "uv",
+      "args": ["run", "--directory", "C:\\Users\\pascal\\Desktop\\steam controller", "steam-claude-controller"]
+    }
+  }
+}
