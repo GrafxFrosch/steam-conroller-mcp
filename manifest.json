@@ -34,6 +34,8 @@
     { "name": "source_console", "description": "Run Source console commands and return their output." },
     { "name": "source_status", "description": "Exact player position, view angles and map." },
     { "name": "source_look", "description": "Turn the view by exact degrees or to an absolute heading." },
+    { "name": "source_goto", "description": "Walk to map coordinates with live position feedback." },
+    { "name": "source_panorama", "description": "Four labelled views (ahead/right/left/behind) in one image." },
     { "name": "source_pause", "description": "Freeze or resume the game world." }
   ],
   "keywords": ["steam", "games", "portal", "source-engine", "automation", "windows"],

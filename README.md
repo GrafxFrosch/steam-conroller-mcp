@@ -53,6 +53,8 @@ testing, a requested +90° came back as 90.04°.
 | `source_console` | Run console commands, get their output |
 | `source_status` | Position, pitch/yaw, map |
 | `source_look` | Relative turn by degrees, or absolute heading |
+| `source_goto` | Walk to map coordinates with live `getpos` feedback; reports arrived/blocked |
+| `source_panorama` | AHEAD/RIGHT/LEFT/BEHIND views in one labelled image |
 | `source_pause` | `setpause` / `unpause` |
 
 ## Setup
@@ -122,8 +124,10 @@ uv run scc --appid 400 act "[{\"key\":\"w\",\"hold\":1.0}]" --shot shots/after.j
 
 ## Known limits / next steps
 
-- D3D9 sometimes hands `PrintWindow` a black frame (e.g. during fades). Capture then falls
-  back to a screen grab, which briefly focuses the game.
+- Source games are captured with the engine's own `jpeg` command. After a level change,
+  Portal's D3D9 window sometimes stops presenting frames (the window shows a frozen or
+  black image) while the game keeps rendering, so window capture can't be trusted there.
+  Other games use `PrintWindow`, falling back to a screen grab.
 - Walking into a portal off-center pins you against the wall beside it. Center on it
   first (`source_status` + `source_look absolute`).
 - Possible additions: a virtual gamepad via ViGEm (so Steam Input sees a real controller),
