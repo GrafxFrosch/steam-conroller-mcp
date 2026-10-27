@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import time
 from pathlib import Path
+from typing import Callable
 
 from PIL import Image
 from pydantic import BaseModel, Field
@@ -14,6 +15,12 @@ MAX_SEQUENCE_SECONDS = 60.0
 _MOUSE_ALIASES = {"mouse1": "left", "mouse2": "right", "mouse3": "middle",
                   "lmb": "left", "rmb": "right", "mmb": "middle"}
 _CLICK_BUTTONS = {"left": "mouse1", "right": "mouse2", "middle": "mouse3"}
+
+
+def encode_jpeg(img: Image.Image) -> bytes:
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=85)
+    return buf.getvalue()
 
 
 class Step(BaseModel):
@@ -37,6 +44,8 @@ class Controller:
         self.window: win32.Window | None = None
         self.game: steam.Game | None = None
         self.shot_scale = 1.0  # screenshot pixels per client pixel
+        # Engine-side capture (e.g. Source's `jpeg`), preferred over window capture.
+        self.capture_hook: Callable[[], Image.Image] | None = None
         self._held_keys: set[int] = set()
         self._held_buttons: set[str] = set()
 
@@ -96,21 +105,26 @@ class Controller:
 
     # ------------------------------------------------------------------ vision
 
-    def screenshot(self, max_width: int = 1024, focus: bool = False) -> tuple[bytes, str]:
+    def grab(self) -> tuple[Image.Image, str]:
+        """Full-resolution capture of the client area: (image, method)."""
         w = self.require_window()
-        if focus:
-            win32.ensure_foreground(w.hwnd)
+        if self.capture_hook:
+            return self.capture_hook(), "engine"
         img, method = win32.capture(w.hwnd, allow_focus=True)
-        cw, ch = img.size
-        if not cw or not ch:
+        if not img.width or not img.height:
             raise RuntimeError("Game window has no client area (minimized or closing).")
+        return img, method
+
+    def screenshot(self, max_width: int = 1024, focus: bool = False) -> tuple[bytes, str]:
+        if focus:
+            win32.ensure_foreground(self.require_window().hwnd)
+        img, method = self.grab()
+        cw, ch = img.size
         if cw > max_width:
             img = img.resize((max_width, round(ch * max_width / cw)), Image.Resampling.LANCZOS)
         self.shot_scale = img.width / cw
-        buf = io.BytesIO()
-        img.save(buf, "JPEG", quality=85)
         info = f"{img.width}x{img.height} (client {cw}x{ch}, via {method})"
-        return buf.getvalue(), info
+        return encode_jpeg(img), info
 
     def save_screenshot(self, path: Path, max_width: int = 1024) -> str:
         data, info = self.screenshot(max_width)

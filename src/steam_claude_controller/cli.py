@@ -24,6 +24,7 @@ def main() -> None:
     sub.add_parser("games")
     sl = sub.add_parser("source-launch")
     sl.add_argument("--map")
+    sl.add_argument("--save")
     sl.add_argument("--size", default="1280x720")
     sub.add_parser("shot").add_argument("out", type=Path)
     a = sub.add_parser("act")
@@ -36,6 +37,13 @@ def main() -> None:
     lk.add_argument("pitch", type=float)
     lk.add_argument("--abs", action="store_true")
     sub.add_parser("pause").add_argument("state", choices=["on", "off"])
+    pn = sub.add_parser("pano")
+    pn.add_argument("out", type=Path)
+    pn.add_argument("--pitch", type=float, default=0.0)
+    gt = sub.add_parser("goto")
+    gt.add_argument("x", type=float)
+    gt.add_argument("y", type=float)
+    gt.add_argument("--tolerance", type=float, default=12.0)
     args = p.parse_args()
 
     if args.cmd == "games":
@@ -51,13 +59,15 @@ def main() -> None:
         src = SourceGame(game.install_dir)
         src.write_bridge()
         w, h = (int(v) for v in args.size.split("x"))
-        steam.launch(args.appid, src.launch_args(w, h, args.map))
+        steam.launch(args.appid, src.launch_args(w, h, args.map, args.save))
         ctrl.attach(args.appid, timeout=120)
         print("attached:", ctrl.describe())
         return
 
     ctrl.attach(args.appid)
     src = SourceGame(ctrl.game.install_dir) if ctrl.game and SourceGame.is_source(ctrl.game.install_dir) else None
+    if src:
+        ctrl.capture_hook = lambda: src.capture(ctrl)
     if args.cmd == "shot":
         print(ctrl.save_screenshot(args.out))
     elif args.cmd == "act":
@@ -72,6 +82,13 @@ def main() -> None:
     elif args.cmd == "look":
         print(json.dumps(src.aim(ctrl, args.yaw, args.pitch)) if args.abs
               else src.turn(ctrl, args.yaw, args.pitch))
+    elif args.cmd == "pano":
+        grid, st = src.panorama(ctrl, args.pitch)
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        grid.save(args.out, quality=85)
+        print(json.dumps(st))
+    elif args.cmd == "goto":
+        print(json.dumps(src.goto(ctrl, args.x, args.y, args.tolerance)))
     elif args.cmd == "pause":
         print(src.run(ctrl, "setpause" if args.state == "on" else "unpause"))
 

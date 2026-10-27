@@ -11,10 +11,13 @@ launch options) we fall back to opening the console and typing the exec line.
 """
 from __future__ import annotations
 
+import math
 import re
 import secrets
 import time
 from pathlib import Path
+
+from PIL import Image, ImageDraw
 
 from .controller import Controller
 
@@ -76,10 +79,13 @@ class SourceGame:
         (self.cfg_dir / "claude_cmd.cfg").write_text("", encoding="utf-8")
 
     @staticmethod
-    def launch_args(width: int, height: int, map_name: str | None = None) -> list[str]:
+    def launch_args(width: int, height: int, map_name: str | None = None,
+                    save: str | None = None) -> list[str]:
         args = ["-novid", "-condebug", "-windowed", "-noborder",
                 "-w", str(width), "-h", str(height), "+exec", "claude_bridge"]
-        if map_name:
+        if save:
+            args += ["+load", save]
+        elif map_name:
             args += ["+map", map_name]
         return args
 
@@ -137,20 +143,48 @@ class SourceGame:
             self._mouse = None
         return out
 
+    def capture(self, ctrl: Controller, timeout: float = 3.0) -> Image.Image:
+        """Screenshot via the engine's own `jpeg` command. It reads the backbuffer, so it
+        works even when the window is covered, minimized or not presenting frames
+        (D3D9 sometimes stops presenting after a level change while still rendering)."""
+        path = self.mod_dir / "screenshots" / "claude_capture.jpg"
+        path.unlink(missing_ok=True)
+        self.run(ctrl, "jpeg claude_capture 90")
+        deadline = time.monotonic() + timeout
+        last_size = -1
+        while time.monotonic() < deadline:  # written at the end of the next frame
+            size = path.stat().st_size if path.exists() else -1
+            if size > 0 and size == last_size:
+                with Image.open(path) as img:
+                    return img.convert("RGB")
+            last_size = size
+            time.sleep(0.05)
+        raise TimeoutError(f"Engine screenshot not written to {path}")
+
     # ------------------------------------------------------------------ state & aim
 
+    def current_map(self) -> str | None:
+        """Last map the engine loaded. (host_map keeps the launch map across changelevels.)"""
+        try:
+            with open(self.console_log, "rb") as f:
+                f.seek(0, 2)
+                f.seek(max(0, f.tell() - 512_000))
+                tail = f.read().decode("utf-8", errors="replace")
+        except FileNotFoundError:
+            return None
+        names = re.findall(r"^Map name: (\S+)", tail, re.MULTILINE)
+        return names[-1] if names else None
+
     def state(self, ctrl: Controller) -> dict:
-        out = self.run(ctrl, "getpos\nhost_map")
+        out = self.run(ctrl, "getpos")
         result: dict = {}
         m = _GETPOS.search(out)
         if m:
             x, y, z, pitch, yaw, roll = (float(v) for v in m.groups())
             result.update(pos=[x, y, z], pitch=pitch, yaw=yaw, roll=roll)
-        mm = re.search(r'"host_map"\s*=\s*"([^"]*)"', out)
-        if mm:
-            result["map"] = mm.group(1)
-        if not m:
+        else:
             result["raw"] = out
+        result["map"] = self.current_map()
         return result
 
     def _mouse_params(self, ctrl: Controller) -> tuple[float, float, float]:
@@ -171,6 +205,64 @@ class SourceGame:
         dy = round(dpitch / (sens * m_pitch))
         ctrl.move_mouse(dx, dy, duration)
         return dx, dy
+
+    def goto(self, ctrl: Controller, x: float, y: float, tolerance: float = 12.0,
+             timeout: float = 20.0) -> dict:
+        """Walk to (x, y) in closed loop: face the target, walk a burst, re-read getpos.
+        Turns are smoothed so a carried object isn't knocked out of the player's hands."""
+        deadline = time.monotonic() + timeout
+        last: tuple[float, float] | None = None
+        stalls = 0
+        while True:
+            st = self.state(ctrl)
+            if "pos" not in st:
+                raise RuntimeError(f"Can't read position (getpos output: {st.get('raw')!r})")
+            px, py = st["pos"][0], st["pos"][1]
+            dist = math.hypot(x - px, y - py)
+            result = None
+            if dist <= tolerance:
+                result = "arrived"
+            elif time.monotonic() > deadline:
+                result = "timeout"
+            elif last and math.hypot(px - last[0], py - last[1]) < 2.0:
+                stalls += 1
+                if stalls >= 2:
+                    result = "blocked"
+            else:
+                stalls = 0
+            if result:
+                return {**st, "result": result, "remaining": round(dist, 1)}
+            last = (px, py)
+            dyaw = _wrap180(math.degrees(math.atan2(y - py, x - px)) - st["yaw"])
+            if abs(dyaw) > 3:
+                self.turn(ctrl, dyaw, 0, duration=min(0.5, abs(dyaw) / 360))
+            ctrl.tap("w", min(0.8, max(0.06, dist / 260)))
+
+    def panorama(self, ctrl: Controller, pitch: float = 0.0, tile_width: int = 480) -> tuple[Image.Image, dict]:
+        """2x2 grid of the views at the current yaw, +90 (left), +180 and -90 (right),
+        each labelled with its absolute yaw. Ends facing the original direction."""
+        st = self.aim(ctrl, None, pitch)
+        base = st["yaw"]
+        tiles = []
+        for i in range(4):
+            if i:
+                self.turn(ctrl, 90, 0)
+                time.sleep(0.12)
+            img, _ = ctrl.grab()
+            tile = img.resize((tile_width, round(img.height * tile_width / img.width)),
+                              Image.Resampling.LANCZOS)
+            label = f"{('AHEAD', 'LEFT', 'BEHIND', 'RIGHT')[i]}  yaw {_wrap180(base + 90 * i):.0f}"
+            draw = ImageDraw.Draw(tile)
+            draw.rectangle((0, 0, 8 + 7 * len(label), 16), fill=(0, 0, 0))
+            draw.text((4, 3), label, fill=(255, 255, 0))
+            tiles.append(tile)
+        self.turn(ctrl, 90, 0)  # back to the start
+        tw, th = tiles[0].size
+        grid = Image.new("RGB", (tw * 2 + 4, th * 2 + 4), (255, 255, 255))
+        # Layout: AHEAD | RIGHT on top, LEFT | BEHIND below.
+        for tile, (cx, cy) in zip(tiles, [(0, 0), (0, 1), (1, 1), (1, 0)]):
+            grid.paste(tile, (cx * (tw + 4), cy * (th + 4)))
+        return grid, st
 
     def aim(self, ctrl: Controller, yaw: float | None, pitch: float | None) -> dict:
         """Turn to absolute angles, correcting with a couple of getpos round-trips."""
