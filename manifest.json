@@ -1,0 +1,47 @@
+{
+  "manifest_version": "0.4",
+  "name": "steam-controller",
+  "display_name": "Steam Game Controller",
+  "version": "0.1.0",
+  "description": "Let Claude see and play Steam games on Windows: library and launch, screenshots, keyboard/mouse input, and a Source engine adapter (Portal, Half-Life 2).",
+  "long_description": "Generic layer for any Steam game: list and launch your library, capture the game window, and send timed keyboard/mouse input (only while the game is the foreground window; sequences abort if you click away). Source engine games such as Portal additionally get a console bridge for exact position and view angles, aiming to the degree, console commands, and pausing the world while Claude thinks. Games that ship detectable anti-cheat are refused; do not use it for online multiplayer.",
+  "author": {
+    "name": "GrafxFrosch",
+    "url": "https://github.com/GrafxFrosch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GrafxFrosch/steam-conroller-mcp"
+  },
+  "homepage": "https://github.com/GrafxFrosch/steam-conroller-mcp",
+  "icon": "icon.png",
+  "server": {
+    "type": "uv",
+    "entry_point": "src/steam_claude_controller/server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--directory", "${__dirname}", "steam-claude-controller"]
+    }
+  },
+  "tools": [
+    { "name": "steam_list_games", "description": "List installed Steam games, Source engine detection and anti-cheat flags." },
+    { "name": "steam_launch", "description": "Launch a game through Steam and attach to its window." },
+    { "name": "game_attach", "description": "Attach to a running game window by appid or title." },
+    { "name": "game_screenshot", "description": "Capture the attached game's window." },
+    { "name": "game_act", "description": "Run a timed keyboard/mouse sequence, then screenshot." },
+    { "name": "game_release_all", "description": "Release all held keys and mouse buttons." },
+    { "name": "source_launch", "description": "Launch a Source engine game with the console bridge, optionally into a map." },
+    { "name": "source_console", "description": "Run Source console commands and return their output." },
+    { "name": "source_status", "description": "Exact player position, view angles and map." },
+    { "name": "source_look", "description": "Turn the view by exact degrees or to an absolute heading." },
+    { "name": "source_pause", "description": "Freeze or resume the game world." }
+  ],
+  "keywords": ["steam", "games", "portal", "source-engine", "automation", "windows"],
+  "license": "GPL-3.0",
+  "compatibility": {
+    "platforms": ["win32"],
+    "runtimes": {
+      "python": ">=3.11"
+    }
+  }
+}

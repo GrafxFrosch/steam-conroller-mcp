@@ -57,21 +57,43 @@ testing, a requested +90° came back as 90.04°.
 
 ## Setup
 
-Requires Windows, Steam, and [uv](https://docs.astral.sh/uv/).
+Requires Windows and Steam.
+
+### Claude Desktop (one-click bundle)
+
+Download `steam-controller-<version>.mcpb` from the
+[latest release](https://github.com/GrafxFrosch/steam-conroller-mcp/releases/latest) and
+open it (or drag it into **Settings → Extensions**). The bundle uses the uv runtime, so
+Claude Desktop provides Python and installs the dependencies itself.
+
+### Claude Code (from source)
+
+Requires [uv](https://docs.astral.sh/uv/).
 
 ```bash
+git clone https://github.com/GrafxFrosch/steam-conroller-mcp.git
+cd steam-conroller-mcp
 uv sync
 ```
 
-Claude Code sessions opened in this folder pick up the server from `.mcp.json` (approve it
-when prompted). To use it from any folder, register it at user scope from a terminal with
-the `claude` CLI:
+Claude Code sessions opened in the clone pick up the server from `.mcp.json` (approve it
+when prompted). To use it from any folder, register it at user scope with the `claude`
+CLI, replacing the path with your clone:
 
 ```bash
-claude mcp add steam-controller --scope user -- uv run --directory "C:\Users\pascal\Desktop\steam controller" steam-claude-controller
+claude mcp add steam-controller --scope user -- uv run --directory "C:\path\to\steam-conroller-mcp" steam-claude-controller
 ```
 
 Then ask, for example: *"Launch Portal into testchmb_a_00 and get out of the vault."*
+
+### Building the bundle
+
+```bash
+npx @anthropic-ai/mcpb@2.1.2 validate manifest.json
+npx @anthropic-ai/mcpb@2.1.2 pack . dist/steam-controller-0.1.0.mcpb
+```
+
+`.mcpbignore` keeps `.venv`, `.git` and screenshots out of the bundle.
 
 ### CLI for debugging
 
@@ -107,3 +129,7 @@ uv run scc --appid 400 act "[{\"key\":\"w\",\"hold\":1.0}]" --shot shots/after.j
 - Possible additions: a virtual gamepad via ViGEm (so Steam Input sees a real controller),
   a BepInEx bridge for Unity games (KSP, Polytopia), and Windows Graphics Capture for
   occluded D3D11/12 windows.
+
+## License
+
+GPL-3.0, see [LICENSE](LICENSE).
